@@ -74,6 +74,9 @@
           </div>
           <div class="composer-row">
             <textarea id="prompt" rows="1" placeholder="Ask Claude Code to do something…"></textarea>
+            <button type="button" class="mic-btn" id="mic-btn" title="Dictate the prompt" aria-label="Dictate the prompt" aria-pressed="false" hidden>
+              <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.75" width="5" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3.25 7.5a4.75 4.75 0 0 0 9.5 0M8 12.25v2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
             <button type="submit" class="run-btn" id="run-btn">Run</button>
           </div>
           <p class="composer-hint" id="composer-hint">Enter to run, Shift+Enter for a new line.</p>
