@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trajectory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 20 C 8 14, 9 8, 13 7 S 19 9, 20 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="4" cy="20" r="2.2" fill="currentColor"/><circle cx="13" cy="7" r="2.2" fill="currentColor"/><circle cx="20" cy="4" r="2.2" fill="currentColor"/>
+      </svg>
+      <span>Trajectory</span>
+    </div>
+    <div class="session" id="session-chip" hidden>
+      <span class="session-label">Session</span>
+      <button class="session-id" id="session-id" title="Copy session id"></button>
+    </div>
+    <div class="topbar-actions">
+      <button class="ghost" id="new-session" title="Start a fresh conversation">New session</button>
+      <button class="ghost outline-toggle" id="outline-toggle" aria-controls="outline" aria-expanded="false">Outline</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <main class="dialogue" id="dialogue">
+      <section class="empty" id="empty">
+        <h1>Watch Claude Code work, one step at a time.</h1>
+        <p>Pick a working directory and send a prompt. Every message, tool call and result appears here as it happens. Follow-up prompts continue the same session.</p>
+        <div class="suggestions">
+          <button class="suggestion" data-prompt="Use a subagent to survey this directory, then summarise what you found.">Use a subagent to survey this directory</button>
+          <button class="suggestion" data-prompt="List the files here and run the tests if there are any.">List the files and run the tests</button>
+          <button class="suggestion" id="replay-demo">Replay a recorded demo run (no cost)</button>
+        </div>
+      </section>
+      <div id="runs"></div>
+      <form class="composer" id="composer" autocomplete="off">
+        <div class="composer-inner">
+          <div class="composer-meta">
+            <label class="field cwd-field">
+              <span>Directory</span>
+              <input id="cwd" name="cwd" spellcheck="false" placeholder="~/projects/my-repo">
+            </label>
+            <label class="field mode-field">
+              <span>Permissions</span>
+              <select id="mode" name="mode">
+                <option value="acceptEdits">Accept edits</option>
+                <option value="bypassPermissions">Allow everything</option>
+                <option value="default">Ask (blocks tools)</option>
+                <option value="plan">Plan only</option>
+              </select>
+            </label>
+          </div>
+          <div class="composer-row">
+            <textarea id="prompt" rows="1" placeholder="Ask Claude Code to do something…"></textarea>
+            <button type="submit" class="run-btn" id="run-btn">Run</button>
+          </div>
+          <p class="composer-hint" id="composer-hint">Enter to run, Shift+Enter for a new line.</p>
+        </div>
+      </form>
+    </main>
+
+    <aside class="outline" id="outline" aria-label="Trajectory outline">
+      <div class="outline-head">
+        <h2>Outline</h2>
+        <span class="outline-count" id="outline-count"></span>
+      </div>
+      <nav class="outline-body" id="outline-body">
+        <p class="outline-empty">Tool calls appear here as the agent runs.</p>
+      </nav>
+      <div class="legend">
+        <span><i class="sw cat-read"></i>Read</span>
+        <span><i class="sw cat-write"></i>Write</span>
+        <span><i class="sw cat-exec"></i>Run</span>
+        <span><i class="sw cat-agent"></i>Subagent</span>
+        <span><i class="sw cat-other"></i>Other</span>
+      </div>
+    </aside>
+  </div>
+
+
+  <div class="scrim" id="scrim" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
