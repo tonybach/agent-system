@@ -36,6 +36,7 @@ Click **Replay a recorded demo run** to see a full run with two parallel subagen
 | Finish sound | A short chime when a run ends: two rising notes when it finishes, two falling notes when it fails |
 | Run numbers | Cost, duration, turns and tool-call count from the final `result` event |
 | Subagents | Events with a `parent_tool_use_id` nest under their `Task`/`Agent` call, collapsible |
+| Session history | Left column (drawer below 1500 px, *History* button). Lists the 60 most recent Claude Code sessions from `~/.claude/projects`, newest first, with title, folder, age and turn count. Click one to load its turns and continue it: the next prompt resumes that session in its directory |
 | Outline | Right column (drawer below 1100 px). Parallel subagents show as side-by-side lanes; click to jump |
 | Timeline | Swimlane strip per turn: one lane per agent, one bar per tool call, width = time to result |
 

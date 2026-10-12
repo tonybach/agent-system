@@ -13,6 +13,7 @@
 </head>
 <body>
   <header class="topbar">
+    <button class="ghost history-toggle" id="history-toggle" aria-controls="history" aria-expanded="false" title="Show previous sessions">History</button>
     <div class="brand">
       <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 20 C 8 14, 9 8, 13 7 S 19 9, 20 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -31,6 +32,18 @@
   </header>
 
   <div class="layout">
+    <aside class="history" id="history" aria-label="Previous sessions">
+      <div class="history-head">
+        <h2>History</h2>
+        <button class="history-refresh" id="history-refresh" type="button" title="Reload the list" aria-label="Reload the list">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.25 8a5.25 5.25 0 1 1-1.54-3.71M13.25 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <nav class="history-body" id="history-body">
+        <p class="outline-empty">Loading sessions…</p>
+      </nav>
+    </aside>
+
     <main class="dialogue" id="dialogue">
       <section class="empty" id="empty">
         <h1>Watch Claude Code work, one step at a time.</h1>

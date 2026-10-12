@@ -162,12 +162,15 @@ function stick(fn) {
 
 /* ---------------- runs ---------------- */
 
-function createRun({ prompt, cwd, replay, resumed }) {
+// Live runs use the page clock. Turns loaded from history set run.clock to each event's timestamp.
+const now = (run) => run.clock ?? performance.now();
+
+function createRun({ prompt, cwd, replay, resumed, history, t0 }) {
   const run = {
     n: state.runs.length + 1,
-    prompt, cwd, replay, resumed,
+    prompt, cwd, replay, resumed, history,
     status: "running",
-    t0: performance.now(), t1: null,
+    t0: t0 ?? performance.now(), t1: null,
     nodes: new Map(),
     calls: [],
     lanes: new Map(),
@@ -186,6 +189,7 @@ function createRun({ prompt, cwd, replay, resumed }) {
   run.statusEl = h("span", "status running", "Running");
   const meta = h("div", "run-meta");
   if (replay) meta.append(h("span", "chip", "Recorded demo, replayed"));
+  if (history) meta.append(h("span", "chip", "From history"));
   const dirChip = h("span", "chip", `Directory <b>${esc(shortDir(cwd))}</b>`);
   dirChip.title = cwd;
   meta.append(dirChip);
@@ -206,8 +210,10 @@ function createRun({ prompt, cwd, replay, resumed }) {
   els.runs.append(sec);
 
   outlineAddRun(run);
-  run.timer = setInterval(() => tick(run), 500);
-  sec.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!history) {
+    run.timer = setInterval(() => tick(run), 500);
+    sec.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   return run;
 }
 
@@ -248,9 +254,9 @@ function playChime(status) {
 }
 
 function setRunStatus(run, status) {
-  if (run.status === "running" && (status === "finished" || status === "failed")) playChime(status);
+  if (run.status === "running" && !run.history && (status === "finished" || status === "failed")) playChime(status);
   run.status = status;
-  run.t1 ??= performance.now();
+  run.t1 ??= now(run);
   clearInterval(run.timer);
   run.statusEl.className = `status ${status}`;
   run.statusEl.textContent = status === "finished" ? "Finished" : status === "failed" ? "Failed" : status;
@@ -341,7 +347,7 @@ function addCall(run, block, pid) {
   const [sumHtml, sumText] = summarize(block.name, block.input, run.cwd);
   const node = {
     id: block.id, name: block.name, input: block.input || {}, cat, run, parent,
-    status: "pending", t0: performance.now(), t1: null, sumText,
+    status: "pending", t0: now(run), t1: null, sumText,
   };
   run.nodes.set(node.id, node);
   run.calls.push(node);
@@ -462,7 +468,7 @@ function attachResult(run, block) {
   const node = run.nodes.get(block.tool_use_id);
   if (!node) return;
   const isError = !!block.is_error;
-  node.t1 = performance.now();
+  node.t1 = now(run);
   setCallStatus(node, isError ? "error" : "ok");
 
   const text = resultText(block.content).replace(/\s+$/, "");
@@ -596,7 +602,7 @@ function laneAddCall(node) {
 
 function layoutLanes(run) {
   if (!run.calls.length) return;
-  const end = run.t1 ?? performance.now();
+  const end = run.t1 ?? now(run);
   const span = Math.max(end - run.t0, 1);
   for (const node of run.calls) {
     if (!node.seg) continue;
@@ -709,6 +715,7 @@ function setSession(id, cwd) {
   els.sessionId.textContent = shortId(id);
   els.sessionId.title = `${id} (click to copy)`;
   updateHint();
+  markCurrentSession();
 }
 
 els.sessionId.addEventListener("click", async () => {
@@ -719,7 +726,8 @@ els.sessionId.addEventListener("click", async () => {
   } catch { /* clipboard unavailable */ }
 });
 
-$("#new-session").addEventListener("click", () => {
+/** Clear the page and forget the session. Stops a run in progress. */
+function resetPage() {
   // Stop a run in progress; its stream is closed below so no late events arrive.
   if (state.active) fetch(`/api/runs/${state.active.serverId}/cancel`, { method: "POST" }).catch(() => {});
   for (const run of state.runs) {
@@ -742,9 +750,105 @@ $("#new-session").addEventListener("click", () => {
   autoGrow();
   closeDrawer();
   updateComposer();
+  markCurrentSession();
   window.scrollTo({ top: 0 });
+}
+
+$("#new-session").addEventListener("click", () => {
+  resetPage();
   els.prompt.focus();
 });
+
+/* ---------------- session history ---------------- */
+
+const sessionList = { body: $("#history-body"), refresh: $("#history-refresh"), sessions: [] };
+
+function fmtAgo(ms) {
+  const s = (Date.now() - ms) / 1000;
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 7 * 86400) return `${Math.floor(s / 86400)} d ago`;
+  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+async function loadSessions() {
+  sessionList.refresh.classList.add("spin");
+  try {
+    const data = await (await fetch("/api/sessions")).json();
+    sessionList.sessions = data.sessions || [];
+    renderSessions();
+  } catch (e) {
+    sessionList.body.replaceChildren(h("p", "outline-empty", `Cannot load sessions: ${esc(e.message)}`));
+  } finally {
+    sessionList.refresh.classList.remove("spin");
+  }
+}
+
+function renderSessions() {
+  if (!sessionList.sessions.length) {
+    sessionList.body.replaceChildren(h("p", "outline-empty", "Sessions you run appear here."));
+    return;
+  }
+  sessionList.body.replaceChildren(...sessionList.sessions.map((s) => {
+    const b = h("button", "h-item");
+    b.type = "button";
+    b.dataset.id = s.id;
+    b.title = `${s.title}\n${s.cwd || ""}\nClick to open and continue this session`;
+    const meta = h("span", "h-meta");
+    meta.append(h("span", null, esc(fmtAgo(s.updated))), h("span", null, "·"), h("span", "h-dir", esc((s.cwd || "").split("/").filter(Boolean).pop() || "/")));
+    if (s.turns > 1) meta.append(h("span", null, "·"), h("span", null, plural(s.turns, "turn")));
+    b.append(h("span", "h-title", esc(s.title)), meta);
+    b.addEventListener("click", () => openSession(s.id, b));
+    return b;
+  }));
+  markCurrentSession();
+}
+
+function markCurrentSession() {
+  for (const b of sessionList.body.querySelectorAll(".h-item")) b.classList.toggle("current", b.dataset.id === state.sessionId);
+}
+
+/** Show a saved session's turns and make the next prompt resume it. */
+async function openSession(id, btn) {
+  if (btn) btn.disabled = true;
+  let data;
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(id)}`);
+    data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
+  } catch (e) {
+    return setHint(`Cannot open the session: ${e.message}`, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+  resetPage();
+  const cwd = data.cwd || state.cwd || state.defaultCwd;
+  for (const turn of data.turns) {
+    const t0 = Date.parse(turn.start) || 0;
+    const run = createRun({ prompt: turn.prompt, cwd, history: true, t0 });
+    for (const ev of turn.events) {
+      run.clock = Date.parse(ev.timestamp) || run.clock || t0;
+      handleEvent(run, ev);
+    }
+    run.clock = Date.parse(turn.end) || run.clock || t0;
+    const stats = h("div", "stats");
+    const tile = (v, k, cls = "") => h("div", `stat ${cls}`, `<span class="v">${v}</span><span class="k">${k}</span>`);
+    stats.append(
+      tile(fmtDur(run.clock - run.t0), "Duration"),
+      tile(run.calls.length, run.calls.length === 1 ? "Tool call" : "Tool calls", "tools"),
+    );
+    run.footEl.append(stats);
+    setRunStatus(run, "finished");
+  }
+  setCwd(cwd);
+  setSession(data.id, cwd);
+  markCurrentSession();
+  window.scrollTo({ top: document.documentElement.scrollHeight });
+  els.prompt.focus();
+}
+
+sessionList.refresh.addEventListener("click", loadSessions);
 
 /* ---------------- streaming ---------------- */
 
@@ -776,6 +880,7 @@ function endStream(run) {
   run.es?.close();
   if (state.active === run) state.active = null;
   updateComposer();
+  if (!run.replay) loadSessions();
 }
 
 async function start({ replay = false } = {}) {
@@ -963,17 +1068,22 @@ $("#replay-demo").addEventListener("click", () => start({ replay: true }));
 
 const scrim = $("#scrim");
 const toggleBtn = $("#outline-toggle");
+const historyBtn = $("#history-toggle");
 function closeDrawer() {
-  document.body.classList.remove("outline-open");
+  document.body.classList.remove("outline-open", "history-open");
   scrim.hidden = true;
   toggleBtn.setAttribute("aria-expanded", "false");
+  historyBtn.setAttribute("aria-expanded", "false");
 }
-toggleBtn.addEventListener("click", () => {
-  const open = !document.body.classList.contains("outline-open");
-  document.body.classList.toggle("outline-open", open);
+function toggleDrawer(cls, btn) {
+  const open = !document.body.classList.contains(cls);
+  closeDrawer();
+  document.body.classList.toggle(cls, open);
   scrim.hidden = !open;
-  toggleBtn.setAttribute("aria-expanded", String(open));
-});
+  btn.setAttribute("aria-expanded", String(open));
+}
+toggleBtn.addEventListener("click", () => toggleDrawer("outline-open", toggleBtn));
+historyBtn.addEventListener("click", () => toggleDrawer("history-open", historyBtn));
 scrim.addEventListener("click", closeDrawer);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
 
@@ -989,4 +1099,5 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawe
   if (savedModel != null && [...els.model.options].some((o) => o.value === savedModel)) els.model.value = savedModel;
   updateComposer();
   els.prompt.focus();
+  loadSessions();
 })();

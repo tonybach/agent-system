@@ -10,6 +10,8 @@ API
   POST /api/runs/<id>/cancel        -> {ok}
   POST /api/replay                  -> {run_id}   body: {file?, speed?}  (replays a fixture, no cost)
   POST /api/pick-dir                -> {path} | {cancelled}   body: {start?}  (native folder dialog, macOS)
+  GET  /api/sessions                -> {sessions: [{id, title, cwd, turns, updated}]}  (newest first)
+  GET  /api/sessions/<id>           -> {id, title, cwd, turns: [{prompt, start, end, events}]}
 """
 
 import argparse
@@ -28,6 +30,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 FIXTURES = ROOT / "fixtures"
+PROJECTS = Path.home() / ".claude" / "projects"  # where Claude Code keeps session transcripts
+SESSION_ID_RE = re.compile(r"^[0-9a-fA-F-]{8,64}$")
+REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.S)
+MAX_SESSIONS = 60
 PERMISSION_MODES = {"acceptEdits", "bypassPermissions", "default", "plan"}
 MODEL_RE = re.compile(r"^[A-Za-z0-9._\[\]-]{1,64}$")
 CONTENT_TYPES = {
@@ -191,6 +197,104 @@ def pick_directory(start):
     return None, proc.stderr.strip() or "The folder dialog failed."
 
 
+# ---- session history (read from Claude Code's transcripts) ---------------
+
+def prompt_text(entry):
+    """Text of a prompt a person typed, or None for tool results and injected context."""
+    if entry.get("type") != "user" or entry.get("isMeta") or entry.get("isSidechain"):
+        return None
+    content = (entry.get("message") or {}).get("content")
+    if isinstance(content, str):
+        text = content
+    elif isinstance(content, list) and content and all(
+            isinstance(b, dict) and b.get("type") in ("text", "image") for b in content):
+        text = "\n".join(b.get("text", "") for b in content if b.get("type") == "text")
+    else:
+        return None
+    text = REMINDER_RE.sub("", text).strip()
+    if not text or text.startswith(("<command-", "<local-command", "[Request interrupted")):
+        return None
+    return text
+
+
+def read_transcript(path):
+    """Split a transcript into turns: one per prompt, with the events that answer it."""
+    title, cwd, turns = None, None, []
+    prompt_id = object()
+    try:
+        lines = path.read_text(errors="replace").splitlines()
+    except OSError:
+        return None, None, []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(entry, dict):
+            continue
+        kind = entry.get("type")
+        if kind == "ai-title":
+            title = entry.get("aiTitle") or title
+            continue
+        if kind not in ("user", "assistant") or entry.get("isSidechain"):
+            continue
+        cwd = cwd or entry.get("cwd")
+        ts = entry.get("timestamp")
+        text = prompt_text(entry)
+        # Text injected after a prompt (a skill body, for example) shares the prompt's promptId.
+        if text is not None and (entry.get("promptId") is None or entry.get("promptId") != prompt_id):
+            prompt_id = entry.get("promptId")
+            turns.append({"prompt": text, "start": ts, "end": ts, "events": []})
+            continue
+        if not turns:
+            continue
+        turns[-1]["end"] = ts or turns[-1]["end"]
+        turns[-1]["events"].append({"type": kind, "message": entry.get("message"),
+                                    "parent_tool_use_id": None, "timestamp": ts})
+    return title, cwd, turns
+
+
+SUMMARY_CACHE = {}  # path -> (mtime, size, summary or None)
+
+
+def session_summary(path):
+    st = path.stat()
+    cached = SUMMARY_CACHE.get(path)
+    if cached and cached[:2] == (st.st_mtime, st.st_size):
+        return cached[2]
+    title, cwd, turns = read_transcript(path)
+    summary = None
+    if turns:
+        summary = {"id": path.stem, "title": title or turns[0]["prompt"][:120], "cwd": cwd,
+                   "turns": len(turns), "updated": int(st.st_mtime * 1000)}
+    SUMMARY_CACHE[path] = (st.st_mtime, st.st_size, summary)
+    return summary
+
+
+def list_sessions():
+    try:
+        files = sorted(PROJECTS.glob("*/*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        return []
+    out = []
+    for path in files:
+        try:
+            summary = session_summary(path)
+        except OSError:
+            continue
+        if summary:
+            out.append(summary)
+            if len(out) >= MAX_SESSIONS:
+                break
+    return out
+
+
+def find_session(session_id):
+    if not SESSION_ID_RE.match(session_id):
+        return None
+    return next(PROJECTS.glob(f"*/{session_id}.jsonl"), None)
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -223,6 +327,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"cwd": os.getcwd(), "home": str(Path.home())})
         if path.startswith("/api/runs/") and path.endswith("/events"):
             return self.stream_events(path.split("/")[3])
+        if path == "/api/sessions":
+            return self.send_json({"sessions": list_sessions()})
+        if path.startswith("/api/sessions/"):
+            found = find_session(path.split("/")[3])
+            if not found:
+                return self.send_json({"error": "Session not found."}, 404)
+            title, cwd, turns = read_transcript(found)
+            return self.send_json({"id": found.stem, "title": title, "cwd": cwd, "turns": turns})
         return self.serve_static(path)
 
     def do_POST(self):
