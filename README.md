@@ -1,10 +1,15 @@
-# Trajectory
+# agent-system
+
+This repo is based on the assignments in the Harvard
+[CS2680 course](https://cs2680.seas.harvard.edu/).
+
+## Trajectory
 
 A web page that drives Claude Code and shows its trajectory live: every assistant message,
 tool call and tool result, nested by subagent, with per-call and per-run status and the
 run's cost, duration and turn count.
 
-## Run it
+### Run it
 
 ```bash
 python3 app/server.py
@@ -18,7 +23,7 @@ directory resumes the same session (`--resume <session_id>`). **New session** st
 Click **Replay a recorded demo run** to see a full run with two parallel subagents at no cost
 (`app/fixtures/demo-subagent.jsonl`).
 
-## What the page shows
+### What the page shows
 
 | Feature | Where |
 |---|---|
@@ -33,7 +38,7 @@ Click **Replay a recorded demo run** to see a full run with two parallel subagen
 | Outline | Right column (drawer below 1100 px). Parallel subagents show as side-by-side lanes; click to jump |
 | Timeline | Swimlane strip per turn: one lane per agent, one bar per tool call, width = time to result |
 
-## Files
+### Files
 
 - `app/server.py` — HTTP server, spawns `claude`, streams its events over Server-Sent Events.
 - `app/static/` — `index.html`, `app.css`, `app.js` (no build step).
