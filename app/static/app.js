@@ -691,12 +691,28 @@ els.sessionId.addEventListener("click", async () => {
 });
 
 $("#new-session").addEventListener("click", () => {
-  if (state.active) return;
+  // Stop a run in progress; its stream is closed below so no late events arrive.
+  if (state.active) fetch(`/api/runs/${state.active.serverId}/cancel`, { method: "POST" }).catch(() => {});
+  for (const run of state.runs) {
+    clearInterval(run.timer);
+    run.es?.close();
+    for (const node of run.calls) spy.unobserve(node.el);
+  }
+  state.runs = [];
+  state.active = null;
   state.sessionId = null;
   state.sessionCwd = null;
+  activePill = null;
   els.sessionChip.hidden = true;
-  if (state.runs.length) els.runs.append(h("div", "chip", "New session started"));
-  updateHint();
+  els.runs.replaceChildren();
+  els.outlineBody.replaceChildren(h("p", "outline-empty", "Tool calls appear here as the agent runs."));
+  els.outlineCount.textContent = "";
+  els.empty.hidden = false;
+  els.prompt.value = "";
+  autoGrow();
+  closeDrawer();
+  updateComposer();
+  window.scrollTo({ top: 0 });
   els.prompt.focus();
 });
 
