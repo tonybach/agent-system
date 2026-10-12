@@ -312,7 +312,19 @@ code, pre, .mono { font-family: var(--mono); font-size: 13px; }
   padding: 3px 8px; font-size: 12.5px; color: var(--ink-2);
 }
 .cwd-field { flex: 1; min-width: 200px; }
-.cwd-field input { flex: 1; font-family: var(--mono); min-width: 0; }
+.dir-pick {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+  border: 0; background: none; padding: 3px 4px; border-radius: var(--r-sm);
+  color: var(--ink-2); text-align: left;
+}
+.dir-pick:hover { background: var(--surface-2); color: var(--ink); }
+.dir-pick:disabled { cursor: progress; opacity: .6; }
+.dir-pick .icon { color: var(--ink-3); }
+/* Ellipsis at the start, so the end of a long path stays visible. */
+.dir-path {
+  min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  direction: rtl; font-family: var(--mono); font-size: 12.5px;
+}
 .composer-row { display: flex; gap: 10px; align-items: flex-end; }
 .composer textarea {
   flex: 1; border: 0; resize: none; background: none; padding: 6px 0; min-height: 34px; max-height: 200px;

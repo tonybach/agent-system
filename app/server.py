@@ -5,15 +5,18 @@ Standard library only. Run:  python3 app/server.py [--port 8765]
 
 API
   GET  /api/defaults                -> {cwd}
-  POST /api/runs                    -> {run_id}   body: {prompt, cwd, session_id?, permission_mode?}
+  POST /api/runs                    -> {run_id}   body: {prompt, cwd, session_id?, permission_mode?, model?}
   GET  /api/runs/<id>/events        -> text/event-stream of Claude Code stream-json events
   POST /api/runs/<id>/cancel        -> {ok}
   POST /api/replay                  -> {run_id}   body: {file?, speed?}  (replays a fixture, no cost)
+  POST /api/pick-dir                -> {path} | {cancelled}   body: {start?}  (native folder dialog, macOS)
 """
 
 import argparse
 import json
 import os
+import re
+import sys
 import shutil
 import subprocess
 import threading
@@ -26,6 +29,7 @@ ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 FIXTURES = ROOT / "fixtures"
 PERMISSION_MODES = {"acceptEdits", "bypassPermissions", "default", "plan"}
+MODEL_RE = re.compile(r"^[A-Za-z0-9._\[\]-]{1,64}$")
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -74,7 +78,7 @@ def register(run):
         RUNS[run.id] = run
 
 
-def start_claude(run, prompt, cwd, session_id, permission_mode):
+def start_claude(run, prompt, cwd, session_id, permission_mode, model=None):
     claude = shutil.which("claude")
     if not claude:
         run.push({"type": "app_error", "message": "The `claude` executable was not found on PATH."})
@@ -84,6 +88,8 @@ def start_claude(run, prompt, cwd, session_id, permission_mode):
 
     cmd = [claude, "-p", prompt, "--output-format", "stream-json", "--verbose",
            "--permission-mode", permission_mode]
+    if model:
+        cmd += ["--model", model]
     if session_id:
         cmd += ["--resume", session_id]
 
@@ -157,6 +163,34 @@ def start_replay(run, path, speed):
     threading.Thread(target=play, daemon=True).start()
 
 
+PICK_DIR_SCRIPT = '''
+on run argv
+    tell application "System Events"
+        activate
+        set chosen to choose folder with prompt "Choose the working directory for Claude Code" default location (POSIX file (item 1 of argv))
+    end tell
+    return POSIX path of chosen
+end run
+'''
+
+
+def pick_directory(start):
+    """Open the native macOS folder dialog. Returns (path, error); both None when cancelled."""
+    start_dir = Path(os.path.expanduser(start or "")) if start else Path.home()
+    if not start_dir.is_dir():
+        start_dir = Path.home()
+    proc = subprocess.run(
+        ["osascript", "-e", PICK_DIR_SCRIPT, str(start_dir)],
+        capture_output=True, text=True,
+    )
+    if proc.returncode == 0:
+        path = proc.stdout.strip()
+        return (path.rstrip("/") or "/"), None
+    if "-128" in proc.stderr:  # user cancelled
+        return None, None
+    return None, proc.stderr.strip() or "The folder dialog failed."
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -197,6 +231,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.create_run()
         if path == "/api/replay":
             return self.create_replay()
+        if path == "/api/pick-dir":
+            if sys.platform != "darwin":
+                return self.send_json({"error": "No native folder picker on this platform."}, 501)
+            chosen, error = pick_directory(self.read_json().get("start"))
+            if error:
+                return self.send_json({"error": error}, 500)
+            return self.send_json({"path": chosen} if chosen else {"cancelled": True})
         if path.startswith("/api/runs/") and path.endswith("/cancel"):
             run = RUNS.get(path.split("/")[3])
             if not run:
@@ -218,6 +259,10 @@ class Handler(BaseHTTPRequestHandler):
         if mode not in PERMISSION_MODES:
             mode = "acceptEdits"
 
+        model = (body.get("model") or "").strip()
+        if model and not MODEL_RE.match(model):
+            return self.send_json({"error": f"Invalid model name: {model}"}, 400)
+
         run = Run()
         register(run)
         raw_cwd = (body.get("cwd") or "").strip()
@@ -229,7 +274,7 @@ class Handler(BaseHTTPRequestHandler):
         elif not cwd.is_dir():
             run.push({"type": "app_error", "message": f"Working directory is not a directory: {cwd}"})
         else:
-            start_claude(run, prompt, str(cwd), body.get("session_id"), mode)
+            start_claude(run, prompt, str(cwd), body.get("session_id"), mode, model or None)
             return self.send_json({"run_id": run.id, "cwd": str(cwd)})
         run.push({"type": "app_done"})
         run.finish()
