@@ -28,6 +28,7 @@ Click **Replay a recorded demo run** to see a full run with two parallel subagen
 | Feature | Where |
 |---|---|
 | Prompt, working directory, permission mode | Composer at the bottom |
+| Voice input | Microphone button next to *Run*. Click it and speak; the words go into the prompt. Click again to stop. Uses the browser's Web Speech API (Chrome, Edge, Safari); the button is hidden where the API is missing |
 | Live trajectory, markdown rendered | Main column, one section per turn |
 | Tool results | Under each call. Up to 14 lines show whole; longer output shows the first 8 lines (errors show the last 12) with *Show all* / *Show last* controls |
 | Status per call | Spinner while pending, check with duration on success, red card and *Error* on `is_error` |

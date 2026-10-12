@@ -737,6 +737,7 @@ $("#new-session").addEventListener("click", () => {
   els.outlineBody.replaceChildren(h("p", "outline-empty", "Tool calls appear here as the agent runs."));
   els.outlineCount.textContent = "";
   els.empty.hidden = false;
+  stopDictation({ discard: true });
   els.prompt.value = "";
   autoGrow();
   closeDrawer();
@@ -845,13 +846,79 @@ function autoGrow() {
   els.prompt.style.height = Math.min(els.prompt.scrollHeight, 200) + "px";
 }
 
+/* Dictation: the Web Speech API writes what you say into the prompt. */
+const mic = { btn: $("#mic-btn"), rec: null, base: "" };
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const MIC_ERRORS = {
+  "not-allowed": "Microphone access is blocked. Allow it in the browser's site settings.",
+  "service-not-allowed": "Speech recognition is not available in this browser.",
+  "audio-capture": "No microphone was found.",
+  network: "Speech recognition needs a network connection.",
+};
+
+/** Stop listening. `discard` drops results still in flight, e.g. when the prompt was just sent. */
+function stopDictation({ discard = false } = {}) {
+  if (!mic.rec) return;
+  if (discard) {
+    mic.rec.onresult = null;
+    mic.rec.abort();
+  } else mic.rec.stop();
+}
+function startDictation() {
+  const rec = new SpeechRecognition();
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.lang = navigator.language || "en-US";
+  // Keep what is already typed; dictated text goes after it.
+  const typed = els.prompt.value;
+  mic.base = typed && !/\s$/.test(typed) ? typed + " " : typed;
+  rec.onresult = (e) => {
+    let text = "";
+    for (const r of e.results) text += r[0].transcript;
+    els.prompt.value = mic.base + text.trimStart();
+    autoGrow();
+  };
+  let failed = false;
+  rec.onerror = (e) => {
+    if (e.error === "aborted" || e.error === "no-speech") return;
+    failed = true;
+    setHint(MIC_ERRORS[e.error] || `Dictation failed: ${e.error}.`, true);
+  };
+  rec.onend = () => {
+    mic.rec = null;
+    if (!failed && !state.active) updateHint();
+    mic.btn.classList.remove("listening");
+    mic.btn.setAttribute("aria-pressed", "false");
+    mic.btn.title = "Dictate the prompt";
+    els.prompt.focus();
+  };
+  try {
+    rec.start();
+  } catch (e) {
+    return setHint(`Cannot start dictation: ${e.message}`, true);
+  }
+  mic.rec = rec;
+  mic.btn.classList.add("listening");
+  mic.btn.setAttribute("aria-pressed", "true");
+  mic.btn.title = "Stop dictation";
+  setHint("Listening… Click the microphone again to stop.");
+}
+if (SpeechRecognition) {
+  mic.btn.hidden = false;
+  mic.btn.addEventListener("click", () => {
+    if (mic.rec) stopDictation(); else startDictation();
+  });
+}
+
 els.form.addEventListener("submit", (e) => {
   e.preventDefault();
+  stopDictation({ discard: true });
   state.active ? stop() : start();
 });
 els.prompt.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
+    stopDictation({ discard: true });
     if (!state.active) start();
   }
 });
