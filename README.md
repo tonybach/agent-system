@@ -27,6 +27,7 @@ Click **Replay a recorded demo run** to see a full run with two parallel subagen
 | Tool results | Under each call. Up to 14 lines show whole; longer output shows the first 8 lines (errors show the last 12) with *Show all* / *Show last* controls |
 | Status per call | Spinner while pending, check with duration on success, red card and *Error* on `is_error` |
 | Status per run | Pill in each turn header: Running (live timer), Finished, Failed. Bad directory, a crash, a cancelled run or a stream that ends without a `result` event all fail visibly |
+| Finish sound | A short chime when a run ends: two rising notes when it finishes, two falling notes when it fails |
 | Run numbers | Cost, duration, turns and tool-call count from the final `result` event |
 | Subagents | Events with a `parent_tool_use_id` nest under their `Task`/`Agent` call, collapsible |
 | Outline | Right column (drawer below 1100 px). Parallel subagents show as side-by-side lanes; click to jump |

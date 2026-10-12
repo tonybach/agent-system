@@ -219,7 +219,36 @@ function tick(run) {
   layoutLanes(run);
 }
 
+/* Short chime when a run ends: rising notes on success, falling on failure. */
+let audioCtx = null;
+function unlockAudio() {
+  // Browsers only allow audio after a user gesture, so create/resume the context on Run.
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch { /* audio unavailable */ }
+}
+function playChime(status) {
+  if (!audioCtx) return;
+  const notes = status === "finished" ? [660, 880] : [440, 330];
+  const t0 = audioCtx.currentTime;
+  notes.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const start = t0 + i * 0.14;
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.2, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.3);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.32);
+  });
+}
+
 function setRunStatus(run, status) {
+  if (run.status === "running" && (status === "finished" || status === "failed")) playChime(status);
   run.status = status;
   run.t1 ??= performance.now();
   clearInterval(run.timer);
@@ -752,6 +781,7 @@ async function start({ replay = false } = {}) {
   if (state.active) return;
   const prompt = replay ? "Use subagents to survey the repo, then update the README" : els.prompt.value.trim();
   if (!prompt) { els.prompt.focus(); return; }
+  unlockAudio();
   const cwd = replay ? "/Users/me/scratch/demo-repo" : state.cwd || state.defaultCwd;
   const resume = !replay && state.sessionId && cwd === state.sessionCwd ? state.sessionId : null;
 
