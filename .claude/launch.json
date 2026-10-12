@@ -4,8 +4,9 @@
     {
       "name": "trajectory",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["app/server.py", "--port", "8765"],
-      "port": 8765
+      "runtimeArgs": ["app/server.py"],
+      "port": 8765,
+      "autoPort": true
     }
   ]
 }
