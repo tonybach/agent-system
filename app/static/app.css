@@ -400,6 +400,56 @@ code, pre, .mono { font-family: var(--mono); font-size: 13px; }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .sw { width: 8px; height: 8px; border-radius: 2px; background: var(--c); display: inline-block; }
 
+/* ---------- session history ---------- */
+.history-toggle { display: none; }
+.history {
+  position: sticky; top: 68px; align-self: start; margin-top: 16px;
+  max-height: calc(100vh - 84px); display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+}
+.history-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 6px 14px; }
+.history-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.history-refresh {
+  display: grid; place-items: center; width: 26px; height: 26px; border: 0; background: none;
+  border-radius: var(--r-sm); color: var(--ink-3);
+}
+.history-refresh:hover { background: var(--surface-2); color: var(--ink); }
+.history-refresh.spin .icon { animation: spin .8s linear infinite; }
+.history-body { overflow-y: auto; padding: 0 6px 10px; flex: 1; }
+.h-item {
+  display: block; width: 100%; border: 0; background: none; text-align: left;
+  padding: 7px 8px; border-radius: var(--r-sm); color: var(--ink-2);
+}
+.h-item:hover { background: var(--surface-2); color: var(--ink); }
+.h-item.current { background: var(--accent-soft); color: var(--ink); }
+.h-item:disabled { cursor: progress; opacity: .6; }
+.h-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 13px; font-weight: 500; line-height: 1.35;
+}
+.h-meta {
+  display: flex; gap: 6px; margin-top: 2px; font-size: 11.5px; color: var(--ink-3);
+  white-space: nowrap; overflow: hidden;
+}
+.h-dir { font-family: var(--mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.h-meta > span { flex: none; }
+.h-meta > .h-dir { flex: 0 1 auto; }
+
+/* Wide screens show history as a left column; narrower ones use a drawer. */
+@media (min-width: 1500px) {
+  .layout { grid-template-columns: 260px minmax(0, 860px) 300px; }
+}
+@media (max-width: 1499px) {
+  .history-toggle { display: inline-block; }
+  .history {
+    position: fixed; top: 52px; left: 0; bottom: 0; width: min(300px, 88vw); height: calc(100dvh - 52px); margin: 0;
+    max-height: none; border-radius: 0; border-width: 0 1px 0 0; z-index: 40;
+    transform: translateX(-100%); transition: transform .2s ease;
+  }
+  body.history-open .history { transform: none; box-shadow: var(--shadow); }
+  body.history-open .scrim { position: fixed; inset: 52px 0 0 0; background: rgba(0, 0, 0, .25); z-index: 35; }
+}
+
 /* ---------- narrow ---------- */
 @media (max-width: 1099px) {
   .layout { grid-template-columns: minmax(0, 860px); padding: 0 16px; }
