@@ -45,11 +45,24 @@
       <form class="composer" id="composer" autocomplete="off">
         <div class="composer-inner">
           <div class="composer-meta">
-            <label class="field cwd-field">
+            <div class="field cwd-field">
               <span>Directory</span>
-              <input id="cwd" name="cwd" spellcheck="false" placeholder="~/projects/my-repo">
-            </label>
-            <label class="field mode-field">
+              <button type="button" id="cwd" class="dir-pick" title="Choose the working directory">
+                <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.75 4.25c0-.69.56-1.25 1.25-1.25h3.1l1.5 1.5H13c.69 0 1.25.56 1.25 1.25v6.5c0 .69-.56 1.25-1.25 1.25H3c-.69 0-1.25-.56-1.25-1.25z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+                <span class="dir-path" id="cwd-text"></span>
+              </button>
+            </div>
+            <label class="field model-field">
+          <span>Model</span>
+          <select id="model" name="model">
+            <option value="">Default</option>
+            <option value="claude-opus-5-5">Opus 5.5</option>
+            <option value="claude-sonnet-5-5">Sonnet 5.5</option>
+            <option value="claude-haiku-5-5">Haiku 5.5</option>
+            <option value="claude-fable-5-1">Fable 5.1</option>
+          </select>
+        </label>
+        <label class="field mode-field">
               <span>Permissions</span>
               <select id="mode" name="mode">
                 <option value="acceptEdits">Accept edits</option>

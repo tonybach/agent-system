@@ -128,6 +128,7 @@ const state = {
   runs: [],
   active: null,
   defaultCwd: "",
+  cwd: "",
 };
 
 const els = {
@@ -136,7 +137,9 @@ const els = {
   form: $("#composer"),
   prompt: $("#prompt"),
   cwd: $("#cwd"),
+  cwdText: $("#cwd-text"),
   mode: $("#mode"),
+  model: $("#model"),
   runBtn: $("#run-btn"),
   hint: $("#composer-hint"),
   sessionChip: $("#session-chip"),
@@ -733,7 +736,7 @@ async function start({ replay = false } = {}) {
   if (state.active) return;
   const prompt = replay ? "Use subagents to survey the repo, then update the README" : els.prompt.value.trim();
   if (!prompt) { els.prompt.focus(); return; }
-  const cwd = replay ? "/Users/me/scratch/demo-repo" : els.cwd.value.trim() || state.defaultCwd;
+  const cwd = replay ? "/Users/me/scratch/demo-repo" : state.cwd || state.defaultCwd;
   const resume = !replay && state.sessionId && cwd === state.sessionCwd ? state.sessionId : null;
 
   let res, data;
@@ -741,7 +744,7 @@ async function start({ replay = false } = {}) {
     res = await fetch(replay ? "/api/replay" : "/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(replay ? {} : { prompt, cwd, session_id: resume, permission_mode: els.mode.value }),
+      body: JSON.stringify(replay ? {} : { prompt, cwd, session_id: resume, permission_mode: els.mode.value, model: els.model.value }),
     });
     data = await res.json();
   } catch (e) {
@@ -753,6 +756,7 @@ async function start({ replay = false } = {}) {
     els.prompt.value = "";
     autoGrow();
     store.set("traj.cwd", cwd);
+    store.set("traj.model", els.model.value);
   }
   const run = createRun({ prompt, cwd: data.cwd || cwd, replay, resumed: resume });
   state.active = run;
@@ -775,7 +779,7 @@ function setHint(text, warn = false) {
   els.hint.classList.toggle("warn", warn);
 }
 function updateHint() {
-  const cwd = els.cwd.value.trim() || state.defaultCwd;
+  const cwd = state.cwd || state.defaultCwd;
   if (state.sessionId && cwd !== state.sessionCwd) {
     setHint("This directory differs from the session's directory. The next prompt starts a new session.", true);
   } else if (state.sessionId) {
@@ -806,7 +810,37 @@ els.prompt.addEventListener("keydown", (e) => {
   }
 });
 els.prompt.addEventListener("input", autoGrow);
-els.cwd.addEventListener("input", updateHint);
+function setCwd(path) {
+  state.cwd = path;
+  // U+200E keeps a leading "/" on the left inside the right-to-left ellipsis box.
+  els.cwdText.textContent = "\u200e" + path + "\u200e";
+  els.cwd.title = `${path}\nClick to choose another folder`;
+  store.set("traj.cwd", path);
+  updateHint();
+}
+
+els.cwd.addEventListener("click", async () => {
+  if (els.cwd.disabled) return;
+  els.cwd.disabled = true;
+  try {
+    const res = await fetch("/api/pick-dir", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ start: state.cwd || state.defaultCwd }),
+    });
+    const data = await res.json();
+    if (data.path) setCwd(data.path);
+    else if (res.status === 501) {
+      // No native picker on this platform: ask for a path instead.
+      const typed = window.prompt("Working directory", state.cwd);
+      if (typed?.trim()) setCwd(typed.trim());
+    } else if (data.error) setHint(data.error, true);
+  } catch (e) {
+    setHint(`Cannot open the folder picker: ${e.message}`, true);
+  } finally {
+    els.cwd.disabled = false;
+  }
+});
 for (const b of document.querySelectorAll(".suggestion[data-prompt]")) {
   b.addEventListener("click", () => { els.prompt.value = b.dataset.prompt; autoGrow(); els.prompt.focus(); });
 }
@@ -837,7 +871,9 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawe
     const d = await (await fetch("/api/defaults")).json();
     state.defaultCwd = d.cwd;
   } catch { /* server offline; leave empty */ }
-  els.cwd.value = store.get("traj.cwd") || state.defaultCwd;
+  setCwd(store.get("traj.cwd") || state.defaultCwd);
+  const savedModel = store.get("traj.model");
+  if (savedModel != null && [...els.model.options].some((o) => o.value === savedModel)) els.model.value = savedModel;
   updateComposer();
   els.prompt.focus();
 })();
