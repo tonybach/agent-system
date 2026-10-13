@@ -18,6 +18,7 @@ python madsLoop.py -p "<problem statement>" [--log] <workdir>
 | `src/tools.py` | Tool schemas and executors: `bash`, `read_file`, `edit_file`, `write_file`, `done` |
 | `src/agentic_loop.py` | The loop, assistant-message rebuilding, the `done` gate, limits, compaction trigger |
 | `src/api.py` | OpenAI client, retries with logged backoff |
+| `src/conventions.py` | Convention check for new JS/TS modules (default export vs siblings) |
 | `src/context.py` | Output truncation and history compaction |
 | `src/trace_log.py` | `madsLoop_logs/` JSONL trace with the exact handout schema |
 | `docker_env.sh` | Installs `openai` in the task container |
@@ -31,7 +32,9 @@ python madsLoop.py -p "<problem statement>" [--log] <workdir>
   JSON strings, so `build_problem.py` decodes them.
 - **Task text and conventions.** The system prompt tells the model that hidden tests use the exact names in
   Requirements and Interface, and to copy the conventions of the surrounding code (sibling parameters' defaults,
-  sibling files' export style). See `results/README.md` for the runs that motivated this.
+  sibling files' export style). Because the model does not reliably follow that rule, the harness also checks
+  new JS/TS modules against their siblings' default-export convention (`src/conventions.py`), in the
+  `write_file` result and at the `done` gate. See `results/README.md` for the runs that motivated this.
 - **Tools.** `bash`, `read_file` (line-numbered, 500-line window), `edit_file` (exactly one match),
   `write_file`, `done`. There is no `repro_check` tool. The system prompt asks for reproduction scripts
   under `/tmp`, and a harness-side `done` gate checks the repository state instead.

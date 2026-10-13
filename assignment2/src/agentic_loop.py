@@ -10,6 +10,7 @@ import traceback
 from . import prompts
 from .api import ContextOverflowError, chat_with_retries
 from .context import compact_messages, elide_write_file_arguments
+from .conventions import new_file_issues
 from .tools import TOOL_SCHEMAS, ToolExecutor, ToolResult, parse_arguments
 from .trace_log import warn
 
@@ -35,7 +36,7 @@ def _git_out(workdir, *args):
     return res[1].strip()
 
 
-def done_gate(workdir, start_head, rejections):
+def done_gate(workdir, start_head, rejections, untracked_before=None):
     """Decide whether to accept a done call. Returns (accepted, message_for_model).
 
     ``rejections`` is a mutable dict counting one-time rejections already given.
@@ -56,6 +57,12 @@ def done_gate(workdir, start_head, rejections):
         return False, ("Not finished: some changes are staged (%s). Staged changes are not collected. Run "
                        "`git reset -q` to unstage them (your edits stay in the files), then call done again."
                        % ", ".join(staged.splitlines()[:5]))
+    if untracked_before is not None and rejections.get("conventions", 0) < 1:
+        issues = new_file_issues(workdir, sorted(_untracked(workdir) - untracked_before))
+        if issues:
+            rejections["conventions"] = rejections.get("conventions", 0) + 1
+            return False, ("Not finished: fix these convention problems in the files you created, re-run "
+                           "your checks, then call done again.\n- " + "\n- ".join(issues))
     status = _git_out(workdir, "status", "--porcelain")
     if status == "" and rejections.get("empty", 0) < 1:
         rejections["empty"] = rejections.get("empty", 0) + 1
@@ -183,7 +190,7 @@ def run(problem, workdir, cfg, logger, client, clock=time.monotonic, sleep=time.
                     elif finished:
                         result = ToolResult("Accepted. The run is finished.", False)
                     else:
-                        accepted, text = done_gate(workdir, start_head, rejections)
+                        accepted, text = done_gate(workdir, start_head, rejections, untracked_before)
                         result = ToolResult(text, not accepted)
                         finished = accepted
                 else:

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from .config import API_KEY_ENV
 from .context import truncate
+from .conventions import export_style_issue
 
 
 @dataclass
@@ -275,9 +276,15 @@ class ToolExecutor:
         if parent:
             self.resolve_path(parent)
             os.makedirs(parent, exist_ok=True)
+        is_new = not os.path.exists(real)
         with open(real, "w", encoding="utf-8", newline="") as fh:
             fh.write(content)
-        return ToolResult("Wrote %d bytes to %s" % (len(content.encode("utf-8")), path), False)
+        text = "Wrote %d bytes to %s" % (len(content.encode("utf-8")), path)
+        if is_new and real.startswith(self.workdir + os.sep):
+            issue = export_style_issue(real, content, display=path)
+            if issue:
+                text += "\n" + issue
+        return ToolResult(text, False)
 
     # --- dispatch ----------------------------------------------------------
     def dispatch(self, name, raw_arguments):

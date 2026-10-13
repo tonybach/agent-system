@@ -175,6 +175,25 @@ class LoopTest(unittest.TestCase):
         self.assertTrue(Path(self.repo, "core.9").exists())  # not an ELF file
         self.assertTrue(Path(self.repo, "core.txt").exists())
 
+    def test_done_rejected_once_for_export_convention(self):
+        lib = Path(self.repo, "lib")
+        lib.mkdir()
+        (lib / "A.ts").write_text("export default class A {}")
+        (lib / "B.ts").write_text("export default class B {}")
+        git(self.repo, "add", ".")
+        git(self.repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "lib")
+        script = [
+            response(tool_calls=[tool_call("bash", {"command": "printf 'export function obs() {}' > lib/obs.ts"}, "v1")]),
+            response(tool_calls=[tool_call("done", {"summary": "x"}, "v2")]),
+            response(tool_calls=[tool_call("bash", {"command": "printf '\\nexport default obs;' >> lib/obs.ts"}, "v3")]),
+            response(tool_calls=[tool_call("done", {"summary": "x"}, "v4")]),
+        ]
+        reason, client = self.run_loop(script)
+        self.assertEqual(reason, "done")
+        rejection = client.requests[2][-1]["content"]
+        self.assertIn("convention", rejection)
+        self.assertIn("lib/obs.ts", rejection)
+
     def test_api_error_ends_with_error(self):
         reason, _ = self.run_loop([ValueError("boom")])
         self.assertEqual(reason, "error")

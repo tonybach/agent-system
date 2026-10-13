@@ -7,7 +7,9 @@ Scored with the unmodified `evaluation_scripts/evaluate.sh` (official SWE-bench 
 | Folder | What it holds |
 |---|---|
 | `run1/` | First pass over all 10 tasks with the PR #8 harness: patches, agent logs, `eval_results.json` (5/10) |
-| `final/` | Patches and the latest agent log per task after the prompt change below, `eval_results.json` (6/10) |
+| `final/` | Patches and the agent log per task with the final harness, `eval_results.json` (**7/10**) |
+| `task9_before/` | Agent logs of the three task 9 runs that failed (named-only export) before the convention check |
+| `task9_repeats/` | Three more task 9 runs with the final harness: patch, agent log and `eval_results.json` each (3/3 resolved) |
 
 ## Per-task outcome
 
@@ -22,9 +24,9 @@ Scored with the unmodified `evaluation_scripts/evaluate.sh` (official SWE-bench 
 | 6 | teleport `89f0432` `ReadAtMost` | Go | ❌ | ❌ | 18 | Test contradicts the requirements (see below) |
 | 7 | qutebrowser `21b426b` `Values._vmap` | Python | ❌ | ❌ | 49 | Test pins an unspecified `__repr__` format |
 | 8 | ansible `83909bf` galaxy login removal | Python | ❌ | ❌ | 53 | Test pins an unspecified error message |
-| 9 | protonmail `944adbf` `observeApiError` | TS | ❌ | ❌ | 27 | Named export; the test imports a default export |
+| 9 | protonmail `944adbf` `observeApiError` | TS | ❌ | ✅ | 20 | run1–3: named-only export; the test imports a default export. Fixed by the convention check |
 
-## Evidence for the unresolved tasks
+## Evidence for the unresolved tasks (6, 7, 8)
 
 **6 — teleport, `ReadAtMost`.** The requirements say: "When the limit allows reading all available content,
 `ReadAtMost` must return all bytes without error." The hidden test `TestReadAtMost` reads `"hello"` with limit 5
@@ -44,18 +46,39 @@ and expects `vmap=odict_values([...])`; the agent produced `values=[...]` (it ke
 passed `list(self._vmap.values())`). The keyword name and the `odict_values` wrapper are not specified anywhere.
 Borderline: renaming the keyword along with the attribute is a plausible guess, but nothing in the task pins it.
 
-**9 — protonmail, `observeApiError`.** Solvable. All six files in `packages/metrics/lib/` use `export default`,
-and the golden patch does too (`export { default as observeApiError } from './lib/observeApiError'`). The test
-does `import observeApiError from '../lib/observeApiError'`, so the agent's named-only export fails to compile
-(`TS2613: Module has no default export`). The agent read two of those sibling files and still chose a named
-export, in three runs, including after the prompt told it to export both ways.
+## Task 9: from 0/3 to 4/4
+
+All six files in `packages/metrics/lib/` use `export default`, and so does the golden patch. The hidden test does
+`import observeApiError from '../lib/observeApiError'`, so a named-only export fails to compile
+(`TS2613: Module has no default export`). In runs 1–3 the agent read two of those sibling files and still wrote a
+named-only export, run 3 even after the system prompt told it to export both ways. A rule in the system prompt
+is read once; the 35B model does not reliably apply it at the moment it writes the file.
+
+The fix moves the check into the harness (`src/conventions.py`). When the agent creates a new JS/TS module (not a
+test, `index`, or `.d.ts` file) without a default export, and a majority of at least two sibling modules have one,
+the harness says so in the `write_file` result, naming the siblings and the fix ("add a default export and keep the
+named export"). The `done` gate runs the same check on every new file in the diff (also catching files created
+with `bash`) and rejects `done` once with the same message. On run 3's failing patch the check reports
+"6 of 6 sibling modules in lib use `export default`".
+
+| Task 9 run | Harness | Check fired | Default export | Official eval |
+|---|---|---|---|---|
+| run 1, 2, 3 | before | — | no | ❌ |
+| run 4 (`final/`) | final | no (the model wrote it unprompted) | yes | ✅ |
+| repeat 1 | final | yes, `write_file` result at step 5 | yes | ✅ |
+| repeat 2 | final | no | yes | ✅ |
+| repeat 3 | final | yes, `write_file` result at step 4 | yes | ✅ |
 
 ## Harness changes driven by these runs
+
+- **Convention check in the harness** (`src/conventions.py`, wired into `write_file` and the `done` gate): see
+  above. Only new JS/TS modules are checked, so Python and Go tasks are unaffected, and the requested fix only
+  adds an export.
 
 - **Conventions rule in the system prompt** (`src/prompts.py`, step 3 of the workflow): copy the pattern of
   sibling parameters (defaults, fallback handling), read sibling files before creating one and match their export
   style (export both default and named when unsure), and update every method that uses a changed data structure.
-  This fixed task 2 (`Request.open` now uses `use_netrc=None` like its siblings). It did not change task 9.
+  This fixed task 2 (`Request.open` now uses `use_netrc=None` like its siblings). On its own it did not fix task 9.
 - Earlier, in PR #8: no core dumps from the bash tool and removal of new ELF `core` files (task 3's first run
   left a binary `core` file in the patch); 300 s / 900 s bash timeouts for slow Go builds; 100-step limit
   (task 0 ran out of 60 steps while cleaning up).
