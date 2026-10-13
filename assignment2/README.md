@@ -64,3 +64,17 @@ export MADSLOOP_BASE_URL=https://openrouter.ai/api/v1
 export MADSLOOP_MODEL=qwen/qwen3.6-35b-a3b
 bash evaluation_scripts/run_task.sh 0
 ```
+
+## Running on Apple Silicon
+
+The task images are x86-64. `run_task.sh` adds `--platform linux/amd64` on arm64 hosts, but QEMU emulation
+is not enough: the Go compiler segfaults under QEMU, so Go tasks fail to build (and a crashed compiler can
+leave a `core` file in the repo). Use Rosetta instead. With Colima:
+
+```bash
+softwareupdate --install-rosetta --agree-to-license
+colima stop
+colima start --vz-rosetta --cpu 6 --memory 12
+```
+
+Then evaluate with `DOCKER_PLATFORM=linux/amd64 bash evaluation_scripts/evaluate.sh`.
