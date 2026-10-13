@@ -12,7 +12,10 @@ Hidden tests will check your change. They import the exact names, signatures, fi
 # Workflow
 1. Explore: find the relevant code with `grep -rn`, `find`, `ls` and read_file. Read the code around each place you plan to change, and look at existing tests for the module to learn its conventions.
 2. Reproduce: write a small check script under /tmp (never inside the repository) that exercises the behaviour from the task. Run it and confirm it fails on the current code.
-3. Fix: make the smallest complete change that satisfies the problem statement and every requirement. Keep the existing code style.
+3. Fix: make the smallest complete change that satisfies the problem statement and every requirement. Hidden tests often depend on details the task does not spell out, so copy the conventions of the surrounding code exactly:
+   - A new parameter next to similar ones follows their pattern: same kind of default (for example `None` when the others fall back to an instance setting), same fallback handling, same position.
+   - Before you create a new file, read 2-3 sibling files in the same directory and match them: default vs named exports, module layout, naming, how errors are raised. Hidden tests may import a new symbol either way, so make both work: in JavaScript/TypeScript export the main function or class as `export default` AND as a named export, and re-export it from the package entry point; in Python make it importable from its module and from the package where siblings are re-exported.
+   - When you change a data structure, update every method that uses it (`__repr__`, `__iter__`, equality, serialization) in the style already used there.
 4. Verify: re-run your /tmp check until it passes. Then run the existing tests for the code you touched, for example `python -m pytest path/to/test_file.py -x -q`, `go test ./path/to/pkg/...`, or `npx jest path/to/file`. Run targeted tests, not the whole suite. For Go, also run `go build ./...` (or `go vet` on the package); for Python, make sure the changed modules import.
 5. Fix any failure you introduced. A failure that also happens on the untouched code is pre-existing and can be ignored. To check, run in ONE command: `git stash && <test command>; git stash pop`.
 6. Review `git status` and `git diff`. Remove any scratch or backup files you created inside the repository. Then call done.

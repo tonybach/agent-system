@@ -126,6 +126,20 @@ class ToolsTest(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.root, "pkg/sub/new.py")))
         self.assertTrue(self.call("write_file", path="../evil.py", content="x").is_error)
 
+    def test_write_file_convention_note(self):
+        os.makedirs(os.path.join(self.root, "lib"))
+        for n in ("A", "B"):
+            with open(os.path.join(self.root, "lib", n + ".ts"), "w") as fh:
+                fh.write("export default class %s {}" % n)
+        r = self.call("write_file", path="lib/obs.ts", content="export function obs() {}")
+        self.assertFalse(r.is_error)
+        self.assertIn("Convention check", r.content)
+        r = self.call("write_file", path="lib/ok.ts", content="export default function ok() {}")
+        self.assertNotIn("Convention check", r.content)
+        r = self.call("write_file", path="/tmp/madsloop_scratch.ts", content="export const x = 1")
+        self.assertNotIn("Convention check", r.content)
+        os.remove("/tmp/madsloop_scratch.ts")
+
     # dispatch
     def test_dispatch_never_raises(self):
         args, r = self.ex.dispatch("bash", "{not json")
