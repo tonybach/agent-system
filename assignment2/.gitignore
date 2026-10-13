@@ -1,0 +1,12 @@
+madsLoop_logs/
+model_patch_*.diff
+patches.json
+pro_eval/
+SWE-bench_Pro-os/
+run_logs/
+run_all_results.md
+.problem_*.txt
+.venv/
+__pycache__/
+*.pyc
+.DS_Store

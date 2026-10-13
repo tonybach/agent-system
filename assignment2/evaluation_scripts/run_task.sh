@@ -44,7 +44,11 @@ if [[ -z "${CS2680_API_KEY:-}" ]]; then
   exit 1
 fi
 
-# On Apple Silicon set PLATFORM_FLAG="--platform linux/amd64"
+# The task images are x86-64. On Apple Silicon default to amd64 emulation;
+# an explicit PLATFORM_FLAG (even "") wins.
+if [[ -z "${PLATFORM_FLAG+x}" && "$(uname -m)" == "arm64" ]]; then
+  PLATFORM_FLAG="--platform linux/amd64"
+fi
 PLATFORM_FLAG="${PLATFORM_FLAG:-}"
 
 read -r INSTANCE_ID IMAGE < <(python3 -c "
@@ -52,11 +56,11 @@ import json
 t = list(json.load(open('$TASKS_JSON')).values())[$IDX]
 print(t['instance_id'], t['docker_image'])
 ")
-python3 -c "
-import json
-t = list(json.load(open('$TASKS_JSON')).values())[$IDX]
-open('$REPO_ROOT/.problem_$IDX.txt', 'w').write(t['problem_statement'])
-"
+# The agent gets the problem statement plus the requirements and interface
+# (hidden tests use the names given there). Some entries store these fields
+# as double-encoded JSON strings; decode those. Empty sections are skipped,
+# so mytest/ entries with "" requirements/interface work unchanged.
+python3 "$SCRIPT_DIR/build_problem.py" "$TASKS_JSON" "$IDX" > "$REPO_ROOT/.problem_$IDX.txt"
 
 echo "== task $IDX: $INSTANCE_ID" >&2
 echo "== image: $IMAGE" >&2
@@ -77,6 +81,11 @@ docker run --rm $PLATFORM_FLAG \
   -e PROBLEM_FILE="/madsLoop/.problem_$IDX.txt" \
   -e LOG_DEST="/madsLoop/madsLoop_logs/$INSTANCE_ID" \
   -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+  ${MADSLOOP_MAX_ITERATIONS:+-e MADSLOOP_MAX_ITERATIONS="$MADSLOOP_MAX_ITERATIONS"} \
+  ${MADSLOOP_MAX_SECONDS:+-e MADSLOOP_MAX_SECONDS="$MADSLOOP_MAX_SECONDS"} \
+  ${MADSLOOP_QUIET:+-e MADSLOOP_QUIET="$MADSLOOP_QUIET"} \
+  ${MADSLOOP_BASE_URL:+-e MADSLOOP_BASE_URL="$MADSLOOP_BASE_URL"} \
+  ${MADSLOOP_MODEL:+-e MADSLOOP_MODEL="$MADSLOOP_MODEL"} \
   "$IMAGE" \
   -c 'set -e
       # The container runs as root but /madsLoop is the host user`s repo.
@@ -174,7 +183,9 @@ docker run --rm $PLATFORM_FLAG \
       }
       ensure_openai
       cd /tmp
-      "$AGENT_PY" /madsLoop/madsLoop.py -p "$(cat "$PROBLEM_FILE")" --log "$WD"
+      # Guarded: a harness crash must not skip the log copy-back and the diff.
+      "$AGENT_PY" /madsLoop/madsLoop.py -p "$(cat "$PROBLEM_FILE")" --log "$WD" || \
+        echo "== WARNING: madsLoop exited with status $?" >&2
       if [ -d madsLoop_logs ]; then
         mkdir -p "$LOG_DEST" && cp -r madsLoop_logs/. "$LOG_DEST"/ && chown -R "$HOST_UID:$HOST_GID" /madsLoop/madsLoop_logs || true
       else
