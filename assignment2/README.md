@@ -29,6 +29,9 @@ python madsLoop.py -p "<problem statement>" [--log] <workdir>
 - **Task text.** `run_task.sh` passes the problem statement *plus* the `requirements` and `interface`
   fields. Hidden tests import the names given there. Some entries store these fields as double-encoded
   JSON strings, so `build_problem.py` decodes them.
+- **Task text and conventions.** The system prompt tells the model that hidden tests use the exact names in
+  Requirements and Interface, and to copy the conventions of the surrounding code (sibling parameters' defaults,
+  sibling files' export style). See `results/README.md` for the runs that motivated this.
 - **Tools.** `bash`, `read_file` (line-numbered, 500-line window), `edit_file` (exactly one match),
   `write_file`, `done`. There is no `repro_check` tool. The system prompt asks for reproduction scripts
   under `/tmp`, and a harness-side `done` gate checks the repository state instead.
